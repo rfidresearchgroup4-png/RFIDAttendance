@@ -1,22 +1,23 @@
-/* ========= SIMPLE RFID ATTENDANCE SYSTEM (FRONTEND ONLY) ========= */
+/* ================= JTEN RFID ATTENDANCE SYSTEM ================= */
+/* FRONTEND ONLY – DEMO READY */
 
-/* ---------- STORAGE ---------- */
-const DB_KEY = "jten_attendance_db";
+const KEY = "jten_demo_db";
 
+/* ---------- DATABASE ---------- */
 function loadDB() {
-  return JSON.parse(localStorage.getItem(DB_KEY)) || {
+  return JSON.parse(localStorage.getItem(KEY)) || {
     users: [
-      { username: "admin", password: "123", role: "admin", name: "Super Admin" }
+      { username: "admin", password: "123", role: "admin" }
     ],
     students: [],
     subjects: [],
     attendance: [],
-    session: { active: false, subjectId: null }
+    session: { active: false, subject: null }
   };
 }
 
-function saveDB(db) {
-  localStorage.setItem(DB_KEY, JSON.stringify(db));
+function saveDB() {
+  localStorage.setItem(KEY, JSON.stringify(DB));
 }
 
 let DB = loadDB();
@@ -24,114 +25,139 @@ const app = document.getElementById("app");
 
 /* ---------- INIT ---------- */
 document.addEventListener("DOMContentLoaded", () => {
-  renderLogin();
+  loginUI();
 });
 
 /* ---------- LOGIN ---------- */
-function renderLogin() {
+function loginUI() {
   app.innerHTML = `
     <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
       <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
 
-      <input id="user" class="w-full border p-2 mb-3 rounded" placeholder="Username / Student No"/>
-      <input id="pass" type="password" class="w-full border p-2 mb-4 rounded" placeholder="Password"/>
+      <input id="u" class="border p-2 w-full mb-3 rounded" placeholder="Username / Student No">
+      <input id="p" type="password" class="border p-2 w-full mb-4 rounded" placeholder="Password">
 
-      <button onclick="login()" class="w-full bg-sky-600 text-white py-2 rounded">Login</button>
+      <button onclick="login()" class="w-full bg-sky-600 text-white py-2 rounded">
+        Login
+      </button>
+
+      <p class="text-xs text-center mt-3">admin / 123</p>
     </div>
   `;
 }
 
 function login() {
-  const u = user.value.trim();
-  const p = pass.value.trim();
+  const u = document.getElementById("u").value.trim();
+  const p = document.getElementById("p").value.trim();
 
-  const admin = DB.users.find(x => x.username === u && x.password === p);
-  if (admin) {
-    renderAdmin();
-    return;
-  }
+  if (u === "admin" && p === "123") return adminUI();
 
   const student = DB.students.find(s => s.studentNo === u);
-  if (student) {
-    renderStudent(student);
-    return;
-  }
+  if (student) return studentUI(student);
 
-  alert("Invalid login");
+  return alert("Invalid login");
 }
 
 /* ---------- ADMIN / REGISTRAR ---------- */
-function renderAdmin() {
+function adminUI() {
   app.innerHTML = `
-    <div class="bg-white p-6 rounded shadow">
-      <h2 class="text-xl font-bold mb-4">Registrar / Admin</h2>
+    <div class="bg-white p-6 rounded shadow max-w-4xl mx-auto">
+      <h2 class="text-xl font-bold mb-4">Registrar Panel</h2>
 
-      <h3 class="font-bold mt-2">Enroll Student</h3>
-      <input id="sn" class="border p-2 w-full mb-2" placeholder="Student No"/>
-      <input id="snm" class="border p-2 w-full mb-2" placeholder="Name"/>
-      <button onclick="addStudent()" class="bg-green-600 text-white px-3 py-1 rounded mb-4">Add Student</button>
+      <div class="grid md:grid-cols-2 gap-6">
 
-      <h3 class="font-bold">Create Subject</h3>
-      <input id="sub" class="border p-2 w-full mb-2" placeholder="Subject Code"/>
-      <button onclick="addSubject()" class="bg-green-600 text-white px-3 py-1 rounded mb-4">Add Subject</button>
+        <div>
+          <h3 class="font-bold mb-2">Enroll Student</h3>
+          <input id="sn" class="border p-2 w-full mb-2" placeholder="Student No">
+          <input id="nm" class="border p-2 w-full mb-2" placeholder="Name">
+          <button onclick="addStudent()" class="bg-green-600 text-white px-3 py-1 rounded">
+            Add Student
+          </button>
+        </div>
 
-      <h3 class="font-bold">Assign Subject to Student</h3>
-      <select id="asStudent" class="border p-2 w-full mb-2"></select>
-      <select id="asSubject" class="border p-2 w-full mb-2"></select>
-      <button onclick="assignSubject()" class="bg-blue-600 text-white px-3 py-1 rounded">Assign</button>
+        <div>
+          <h3 class="font-bold mb-2">Create Subject</h3>
+          <input id="sc" class="border p-2 w-full mb-2" placeholder="Subject Code">
+          <button onclick="addSubject()" class="bg-green-600 text-white px-3 py-1 rounded">
+            Add Subject
+          </button>
+        </div>
 
-      <button onclick="renderLogin()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">Logout</button>
+      </div>
+
+      <div class="mt-6">
+        <h3 class="font-bold mb-2">Assign Subject to Student</h3>
+        <select id="asStudent" class="border p-2 w-full mb-2"></select>
+        <select id="asSubject" class="border p-2 w-full mb-2"></select>
+        <button onclick="assignSubject()" class="bg-blue-600 text-white px-3 py-1 rounded">
+          Assign
+        </button>
+      </div>
+
+      <div class="mt-6">
+        <button onclick="professorUI()" class="bg-purple-600 text-white px-3 py-1 rounded">
+          Go to Professor
+        </button>
+        <button onclick="loginUI()" class="ml-2 bg-gray-500 text-white px-3 py-1 rounded">
+          Logout
+        </button>
+      </div>
     </div>
   `;
-  populateSelects();
+
+  refreshSelects();
 }
 
 function addStudent() {
-  if (!sn.value || !snm.value) return;
-  DB.students.push({ studentNo: sn.value, name: snm.value, subjects: [] });
-  saveDB(DB);
-  renderAdmin();
+  if (!sn.value || !nm.value) return;
+  DB.students.push({ studentNo: sn.value, name: nm.value, subjects: [] });
+  saveDB();
+  adminUI();
 }
 
 function addSubject() {
-  if (!sub.value) return;
-  DB.subjects.push({ id: Date.now(), code: sub.value });
-  saveDB(DB);
-  renderAdmin();
+  if (!sc.value) return;
+  DB.subjects.push({ id: Date.now(), code: sc.value });
+  saveDB();
+  adminUI();
 }
 
-function populateSelects() {
-  asStudent.innerHTML = DB.students.map(s => `<option value="${s.studentNo}">${s.name}</option>`).join("");
-  asSubject.innerHTML = DB.subjects.map(s => `<option value="${s.id}">${s.code}</option>`).join("");
+function refreshSelects() {
+  asStudent.innerHTML = DB.students.map(s =>
+    `<option value="${s.studentNo}">${s.name}</option>`).join("");
+  asSubject.innerHTML = DB.subjects.map(s =>
+    `<option value="${s.id}">${s.code}</option>`).join("");
 }
 
 function assignSubject() {
   const st = DB.students.find(s => s.studentNo === asStudent.value);
   const sid = Number(asSubject.value);
   if (!st.subjects.includes(sid)) st.subjects.push(sid);
-  saveDB(DB);
-  alert("Assigned");
+  saveDB();
+  alert("Subject Assigned");
 }
 
 /* ---------- PROFESSOR ---------- */
-function renderProfessor(subjectId) {
-  DB.session = { active: false, subjectId };
-  saveDB(DB);
+function professorUI() {
+  DB.session.active = false;
+  saveDB();
 
   app.innerHTML = `
-    <div class="bg-white p-6 rounded shadow">
+    <div class="bg-white p-6 rounded shadow max-w-2xl mx-auto">
       <h2 class="text-xl font-bold mb-4">Professor Attendance</h2>
 
       <button onclick="startSession()" class="bg-green-600 text-white px-4 py-2 rounded mb-3">
         Start Session
       </button>
 
-      <input id="scan" class="border p-2 w-full mb-3"
-        placeholder="Tap RFID / Type Student No then ENTER"/>
+      <input id="scan" class="border p-2 w-full mb-4"
+        placeholder="Tap RFID / Type Student No then ENTER">
 
       <div id="att"></div>
 
-      <button onclick="renderLogin()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">Logout</button>
+      <button onclick="adminUI()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">
+        Back
+      </button>
     </div>
   `;
 
@@ -142,12 +168,13 @@ function renderProfessor(subjectId) {
 
 function startSession() {
   DB.session.active = true;
-  saveDB(DB);
+  saveDB();
   alert("Session Started");
 }
 
 function tapIn() {
   if (!DB.session.active) return alert("Session not started");
+
   const uid = scan.value.trim();
   if (!uid) return;
 
@@ -163,7 +190,7 @@ function tapIn() {
     status
   });
 
-  saveDB(DB);
+  saveDB();
   scan.value = "";
   renderAttendance();
 }
@@ -188,12 +215,12 @@ function renderAttendance() {
 }
 
 /* ---------- STUDENT ---------- */
-function renderStudent(st) {
+function studentUI(st) {
   const rec = DB.attendance.filter(a => a.studentNo === st.studentNo);
 
   app.innerHTML = `
-    <div class="bg-white p-6 rounded shadow">
-      <h2 class="text-xl font-bold mb-4">Student Attendance</h2>
+    <div class="bg-white p-6 rounded shadow max-w-xl mx-auto">
+      <h2 class="text-xl font-bold mb-4">My Attendance</h2>
 
       <table class="w-full border text-sm">
         <tr class="bg-slate-100">
@@ -208,7 +235,9 @@ function renderStudent(st) {
         `).join("")}
       </table>
 
-      <button onclick="renderLogin()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">Logout</button>
+      <button onclick="loginUI()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">
+        Logout
+      </button>
     </div>
   `;
 }
