@@ -1,155 +1,217 @@
-console.log("FINAL SYSTEM 11:35 LOADED");
+/* ===============================
+   RFID ATTENDANCE SYSTEM
+   STABLE WORKING BASE APP.JS
+   =============================== */
 
-const KEY="ATT_SYS_1135";
-const app=document.getElementById("app");
+console.log("ATTENDANCE SYSTEM STABLE APP.JS LOADED");
 
-let DB=JSON.parse(localStorage.getItem(KEY))||{
-  admin:{u:"admin",p:"123"},
-  professors:[],
-  subjects:[],
-  students:[],
-  room:{r:5,c:8},
-  attendance:[],
-  session:null
-};
-function save(){localStorage.setItem(KEY,JSON.stringify(DB));}
+const app = document.getElementById("app");
+const STORAGE_KEY = "ATT_SYS_STABLE";
 
-/* LOGIN */
-function loginUI(){
-  app.innerHTML=`
-  <div class="login-wrap">
-    <div class="card" style="max-width:420px">
-      <h2>Login</h2>
-      <input id="u" placeholder="Username / Student No">
-      <input id="p" type="password" placeholder="Password (blank for student)">
-      <button class="btn-blue" onclick="login()">Login</button>
-      <p style="font-size:13px;color:#555;margin-top:10px">admin / 123</p>
-    </div>
-  </div>`;
+/* ---------- DATABASE ---------- */
+function loadDB() {
+  return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {
+    admin: { username: "admin", password: "123" },
+    professors: [
+      // sample:
+      // { username:"prof1", password:"123", name:"Prof One" }
+    ],
+    students: [
+      // sample:
+      // { no:"2025001", name:"Juan Dela Cruz", subjects:[] }
+    ]
+  };
 }
 
-function login(){
-  const u=uInput.value=uInput||document.getElementById("u").value.trim();
-  const p=document.getElementById("p").value.trim();
-
-  if(u===DB.admin.u && p===DB.admin.p) return registrarUI();
-  const prof=DB.professors.find(x=>x.user===u&&x.pass===p);
-  if(prof) return professorUI(prof);
-  const st=DB.students.find(x=>x.no===u && p==="");
-  if(st) return studentUI(st);
-  alert("Invalid login");
+let DB = loadDB();
+function saveDB() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
 }
 
-/* REGISTRAR */
-function registrarUI(){
-  app.innerHTML=`
-  <div class="card">
-    <h2>Registrar Panel</h2>
-    <div class="nav">
-      <button class="btn-blue" onclick="enrollUI()">Enroll</button>
-      <button class="btn-purple" onclick="recordsUI()">Student Records</button>
-      <button class="btn-green" onclick="roomUI()">Room</button>
-      <button class="btn-gray" onclick="usersUI()">Users</button>
-      <button class="btn-gray" onclick="loginUI()">Logout</button>
+/* ---------- LOGIN UI ---------- */
+function loginUI() {
+  app.innerHTML = `
+    <div class="login-wrap">
+      <div class="card login-card">
+        <h2>Login</h2>
+
+        <input id="loginUser" placeholder="Username / Student No">
+        <input id="loginPass" type="password" placeholder="Password (blank for student)">
+
+        <button class="btn-blue" onclick="login()">Login</button>
+
+        <div class="hint">
+          Admin: <b>admin / 123</b>
+        </div>
+      </div>
     </div>
-    <div id="content"></div>
-  </div>`;
+  `;
+}
+
+/* ---------- LOGIN LOGIC ---------- */
+function login() {
+  const username = document.getElementById("loginUser").value.trim();
+  const password = document.getElementById("loginPass").value.trim();
+
+  /* ADMIN */
+  if (
+    username === DB.admin.username &&
+    password === DB.admin.password
+  ) {
+    registrarUI();
+    return;
+  }
+
+  /* PROFESSOR */
+  const prof = DB.professors.find(
+    p => p.username === username && p.password === password
+  );
+  if (prof) {
+    professorUI(prof);
+    return;
+  }
+
+  /* STUDENT (NO PASSWORD) */
+  const student = DB.students.find(
+    s => s.no === username && password === ""
+  );
+  if (student) {
+    studentUI(student);
+    return;
+  }
+
+  alert("Invalid login credentials");
+}
+
+/* ---------- REGISTRAR ---------- */
+function registrarUI() {
+  app.innerHTML = `
+    <div class="card">
+      <h2>Registrar Panel</h2>
+
+      <div class="nav">
+        <button class="btn-blue" onclick="enrollUI()">Enroll Student</button>
+        <button class="btn-purple" onclick="studentListUI()">Student Records</button>
+        <button class="btn-gray" onclick="loginUI()">Logout</button>
+      </div>
+
+      <div id="content"></div>
+    </div>
+  `;
   enrollUI();
 }
 
-function enrollUI(){
-  content.innerHTML=`
-  <h3>Enroll Student</h3>
-  <input id="sno" placeholder="Student Number (UID)">
-  <input id="sname" placeholder="Name">
-  <input id="scode" placeholder="Subject Code">
-  <input id="prof" placeholder="Professor Username">
-  <select id="day"><option>MON</option><option>TUE</option><option>WED</option><option>THU</option><option>FRI</option></select>
-  <input id="time" type="time" value="08:00">
-  <button class="btn-green" onclick="saveEnroll()">Save</button>`;
+/* ---------- ENROLL STUDENT ---------- */
+function enrollUI() {
+  document.getElementById("content").innerHTML = `
+    <h3>Enroll Student</h3>
+
+    <input id="studNo" placeholder="Student Number (UID)">
+    <input id="studName" placeholder="Student Name">
+
+    <button class="btn-green" onclick="saveStudent()">Save Student</button>
+  `;
 }
 
-function saveEnroll(){
-  let s=DB.students.find(x=>x.no===sno.value);
-  if(!s){s={no:sno.value,name:sname.value,seat:null,subjects:[]};DB.students.push(s);}
-  s.subjects.push({code:scode.value,prof:prof.value,day:day.value,time:time.value});
-  save(); alert("Saved");
+function saveStudent() {
+  const no = document.getElementById("studNo").value.trim();
+  const name = document.getElementById("studName").value.trim();
+
+  if (!no || !name) {
+    alert("Please complete all fields");
+    return;
+  }
+
+  if (DB.students.find(s => s.no === no)) {
+    alert("Student already exists");
+    return;
+  }
+
+  DB.students.push({
+    no: no,
+    name: name,
+    subjects: []
+  });
+
+  saveDB();
+  alert("Student enrolled successfully");
+  studentListUI();
 }
 
-function recordsUI(){
-  content.innerHTML=`
-  <h3>Student Records</h3>
-  <table class="table">
-    <tr><th>No</th><th>Name</th><th>Subjects</th></tr>
-    ${DB.students.map(s=>`
+/* ---------- STUDENT LIST ---------- */
+function studentListUI() {
+  document.getElementById("content").innerHTML = `
+    <h3>Student Records</h3>
+
+    <table class="table">
       <tr>
-        <td>${s.no}</td>
-        <td>${s.name}</td>
-        <td>${s.subjects.map(x=>x.code).join(", ")}</td>
-      </tr>`).join("")}
-  </table>`;
+        <th>Student No</th>
+        <th>Name</th>
+      </tr>
+      ${DB.students
+        .map(
+          s => `
+          <tr>
+            <td>${s.no}</td>
+            <td>${s.name}</td>
+          </tr>
+        `
+        )
+        .join("")}
+    </table>
+  `;
 }
 
-function roomUI(){
-  content.innerHTML=`
-  <h3>Room (Cinema Style)</h3>
-  <input id="rr" type="number" value="${DB.room.r}">
-  <input id="cc" type="number" value="${DB.room.c}">
-  <button class="btn-green" onclick="saveRoom()">Save</button>
-  <div class="seats" style="grid-template-columns:repeat(${DB.room.c},1fr)">
-    ${Array.from({length:DB.room.r*DB.room.c},(_,i)=>{
-      const taken=DB.students.find(s=>s.seat===i+1);
-      return `<div class="seat ${taken?'taken':'free'}">${i+1}</div>`;
-    }).join("")}
-  </div>`;
-}
+/* ---------- PROFESSOR ---------- */
+function professorUI(prof) {
+  app.innerHTML = `
+    <div class="card">
+      <h2>Professor Panel</h2>
+      <p><b>${prof.name || prof.username}</b></p>
 
-function saveRoom(){
-  DB.room={r:+rr.value,c:+cc.value};
-  save(); roomUI();
-}
+      <input id="scanInput" placeholder="RFID / Student No">
+      <div id="scanResult"></div>
 
-function usersUI(){
-  content.innerHTML=`
-  <h3>Professors</h3>
-  <input id="pu" placeholder="Username">
-  <input id="pp" placeholder="Password">
-  <button class="btn-green" onclick="addProf()">Add</button>
-  <ul>${DB.professors.map(p=>`<li>${p.user}</li>`).join("")}</ul>`;
-}
+      <button class="btn-gray" onclick="loginUI()">Logout</button>
+    </div>
+  `;
 
-function addProf(){
-  DB.professors.push({user:pu.value,pass:pp.value});
-  save(); usersUI();
-}
-
-/* PROFESSOR */
-function professorUI(p){
-  app.innerHTML=`
-  <div class="card">
-    <h2>Professor Panel</h2>
-    <input id="scan" placeholder="RFID / Student No">
-    <div id="att"></div>
-    <button class="btn-gray" onclick="loginUI()">Logout</button>
-  </div>`;
-  scan.addEventListener("keydown",e=>{
-    if(e.key==="Enter"){
-      DB.attendance.push({no:scan.value,time:new Date().toLocaleTimeString(),status:"PRESENT"});
-      save();
-      att.innerHTML+=`<p>${scan.value} - PRESENT</p>`;
-      scan.value="";
+  const scanInput = document.getElementById("scanInput");
+  scanInput.addEventListener("keydown", function (e) {
+    if (e.key === "Enter") {
+      handleScan(scanInput.value.trim());
+      scanInput.value = "";
     }
   });
 }
 
-/* STUDENT */
-function studentUI(s){
-  app.innerHTML=`
-  <div class="card">
-    <h2>Student Portal</h2>
-    ${s.subjects.map(x=>`<p>${x.code} | ${x.day} ${x.time}</p>`).join("")}
-    <button class="btn-gray" onclick="loginUI()">Logout</button>
-  </div>`;
+function handleScan(studentNo) {
+  const student = DB.students.find(s => s.no === studentNo);
+  if (!student) {
+    document.getElementById("scanResult").innerHTML =
+      "<p style='color:red'>Student not found</p>";
+    return;
+  }
+
+  document.getElementById("scanResult").innerHTML =
+    `<p style="color:green">${student.name} (${student.no}) - PRESENT</p>`;
 }
 
+/* ---------- STUDENT ---------- */
+function studentUI(student) {
+  app.innerHTML = `
+    <div class="card">
+      <h2>Student Portal</h2>
+
+      <p><b>Student No:</b> ${student.no}</p>
+      <p><b>Name:</b> ${student.name}</p>
+
+      <p>No attendance records yet.</p>
+
+      <button class="btn-gray" onclick="loginUI()">Logout</button>
+    </div>
+  `;
+}
+
+/* ---------- INIT ---------- */
 loginUI();
