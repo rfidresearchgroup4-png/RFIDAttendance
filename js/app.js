@@ -1,142 +1,321 @@
-console.log("FINAL UI SYSTEM LOADED");
+/* ============================================================
+   COMPLETE ATTENDANCE SYSTEM – FINAL
+   Frontend only | Excel (CSV) export | Defense-ready
+============================================================ */
 
-const KEY = "ATT_SYS_FINAL_UI";
-const app = document.getElementById("app");
+const DB_KEY = "ATTENDANCE_FINAL_DB";
 
+/* ================= DATABASE ================= */
 function loadDB(){
-  return JSON.parse(localStorage.getItem(KEY)) || {
-    admin:{u:"admin",p:"123"},
-    profs:[],
-    subs:[],
-    students:[],
-    room:{r:5,c:8},
-    att:[],
-    session:null
+  return JSON.parse(localStorage.getItem(DB_KEY)) || {
+    users:[{username:"admin",password:"123",role:"admin"}],
+    professors:[],   // {username,password,name}
+    subjects:[],     // {id,code,professor}
+    students:[],     // {studentNo,name,seat,schedules:[{subjectId,day,startTime}]}
+    rooms:{rows:5,cols:8},
+    attendance:[],   // {studentNo,subjectId,time,status}
+    session:{active:false,subjectId:null}
   };
 }
 let DB = loadDB();
-function save(){ localStorage.setItem(KEY, JSON.stringify(DB)); }
+function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(DB)); }
+const app = document.getElementById("app");
 
-/* ---------- LOGIN ---------- */
-function loginUI(){
+document.addEventListener("DOMContentLoaded", renderLogin);
+
+/* ================= LOGIN ================= */
+function renderLogin(){
   app.innerHTML=`
-  <div class="card" style="max-width:380px;margin:auto">
-    <h2>Login</h2>
-    <input id="u" placeholder="Username / Student No">
-    <input id="p" type="password" placeholder="Password (blank for student)">
-    <button class="btn-blue" onclick="login()">Login</button>
-    <p style="font-size:12px;color:#666">admin / 123</p>
+  <div class="max-w-md mx-auto bg-white p-6 rounded shadow">
+    <h2 class="text-xl font-bold mb-4 text-center">Login</h2>
+    <input id="loginUser" class="border p-2 w-full mb-3" placeholder="Username / Student No">
+    <input id="loginPass" type="password" class="border p-2 w-full mb-4"
+      placeholder="Password (blank for student)">
+    <button onclick="login()" class="w-full bg-sky-600 text-white py-2 rounded">Login</button>
+    <p class="text-xs text-center mt-3 text-gray-500">admin / 123</p>
   </div>`;
 }
 
 function login(){
-  const u=document.getElementById("u").value.trim();
-  const p=document.getElementById("p").value.trim();
+  const u = loginUser.value.trim();
+  const p = loginPass.value.trim();
 
-  if(u===DB.admin.u && p===DB.admin.p) return registrarUI();
+  if(u==="admin" && p==="123") return registrarUI();
 
-  const prof=DB.profs.find(x=>x.u===u && x.p===p);
+  const prof = DB.professors.find(x=>x.username===u && x.password===p);
   if(prof) return professorUI(prof);
 
-  const st=DB.students.find(x=>x.no===u && p==="");
+  const st = DB.students.find(x=>x.studentNo===u && p==="");
   if(st) return studentUI(st);
 
-  alert("Invalid login");
+  alert("Invalid credentials");
 }
 
-/* ---------- REGISTRAR ---------- */
+/* ================= REGISTRAR ================= */
 function registrarUI(){
   app.innerHTML=`
-  <div class="card">
-    <h2>Registrar Panel</h2>
-    <div class="nav">
-      <button class="btn-blue" onclick="enrollUI()">Enroll</button>
-      <button class="btn-purple" onclick="recordsUI()">Student Records</button>
-      <button class="btn-green" onclick="roomUI()">Room</button>
-      <button class="btn-gray" onclick="loginUI()">Logout</button>
+  <div class="bg-white p-6 rounded shadow max-w-7xl mx-auto">
+    <h2 class="text-xl font-bold mb-4">Registrar Panel</h2>
+
+    <div class="flex gap-2 mb-4">
+      <button onclick="enrollUI()" class="bg-sky-600 text-white px-4 py-2 rounded">Enroll</button>
+      <button onclick="recordsUI()" class="bg-indigo-600 text-white px-4 py-2 rounded">Student Records</button>
+      <button onclick="roomUI()" class="bg-emerald-600 text-white px-4 py-2 rounded">Room</button>
+      <button onclick="renderLogin()" class="bg-gray-500 text-white px-4 py-2 rounded">Logout</button>
     </div>
+
     <div id="content"></div>
   </div>`;
   enrollUI();
 }
 
+/* ---------- ENROLL / ADD SUBJECT ---------- */
 function enrollUI(){
   content.innerHTML=`
-    <h3>Enroll / Add Subject to Student</h3>
-    <input id="sno" placeholder="Student Number (UID)">
-    <input id="sname" placeholder="Name (new student only)">
-    <input id="sub" placeholder="Subject Code (ex: Math101)">
-    <select id="day">
-      <option>MON</option><option>TUE</option><option>WED</option>
-      <option>THU</option><option>FRI</option>
-    </select>
-    <input id="time" type="time" value="08:00">
-    <button class="btn-green" onclick="saveEnroll()">Save</button>`;
+  <h3 class="font-bold mb-2">Enroll / Add Subject to Student</h3>
+
+  <input id="stNo" class="border p-2 w-full mb-2" placeholder="Student Number (UID)">
+  <input id="stName" class="border p-2 w-full mb-2" placeholder="Name (new student only)">
+
+  <select id="stSubject" class="border p-2 w-full mb-2"></select>
+  <select id="stDay" class="border p-2 w-full mb-2">
+    <option>MON</option><option>TUE</option><option>WED</option>
+    <option>THU</option><option>FRI</option>
+  </select>
+  <input id="stTime" type="time" class="border p-2 w-full mb-2" value="08:00">
+
+  <button onclick="saveStudent()" class="bg-green-600 text-white px-4 py-2 rounded">
+    Save
+  </button>`;
+  stSubject.innerHTML = DB.subjects.map(s=>`<option value="${s.id}">${s.code}</option>`).join("");
 }
 
-function saveEnroll(){
-  let st=DB.students.find(s=>s.no===sno.value);
+function saveStudent(){
+  let st = DB.students.find(s=>s.studentNo===stNo.value);
   if(!st){
-    st={no:sno.value,name:sname.value,seat:null,sched:[]};
+    st = { studentNo:stNo.value, name:stName.value, seat:null, schedules:[] };
     DB.students.push(st);
   }
-  st.sched.push({sub:sub.value,day:day.value,time:time.value});
-  save(); alert("Saved");
+  st.schedules.push({
+    subjectId:Number(stSubject.value),
+    day:stDay.value,
+    startTime:stTime.value
+  });
+  saveDB();
+  alert("Student saved");
 }
 
 /* ---------- STUDENT RECORDS ---------- */
 function recordsUI(){
   content.innerHTML=`
-    <h3>Student Records</h3>
-    <table class="table">
-      <tr><th>Student No</th><th>Name</th></tr>
-      ${DB.students.map(s=>`
-        <tr><td>${s.no}</td><td>${s.name}</td></tr>
-      `).join("")}
-    </table>`;
+  <h3 class="font-bold mb-3">Student Records</h3>
+  <table class="w-full border text-sm text-center">
+    <tr class="bg-slate-200">
+      <th>Student No</th><th>Name</th><th>Seat</th><th>Action</th>
+    </tr>
+    ${DB.students.map(s=>`
+      <tr>
+        <td class="text-blue-600 font-bold cursor-pointer"
+            onclick="editStudent('${s.studentNo}')">${s.studentNo}</td>
+        <td>${s.name}</td>
+        <td>${s.seat||"-"}</td>
+        <td>
+          <button onclick="deleteStudent('${s.studentNo}')"
+            class="bg-red-600 text-white px-2 py-1 rounded">Delete</button>
+        </td>
+      </tr>`).join("")}
+  </table>`;
+}
+
+function deleteStudent(stNo){
+  if(!confirm("Delete student?")) return;
+  DB.students = DB.students.filter(s=>s.studentNo!==stNo);
+  saveDB(); recordsUI();
+}
+
+function editStudent(stNo){
+  const st = DB.students.find(s=>s.studentNo===stNo);
+  content.innerHTML=`
+  <h3 class="font-bold mb-2">Edit Student – ${st.studentNo}</h3>
+
+  <h4 class="font-semibold mb-1">Schedules</h4>
+  ${st.schedules.map(s=>{
+    const sub=DB.subjects.find(x=>x.id===s.subjectId);
+    return `<p>${sub.code} | ${s.day} | ${s.startTime}</p>`;
+  }).join("")}
+
+  <h4 class="font-semibold mt-4 mb-1">Seat Assignment</h4>
+  <div id="seats" class="grid gap-2"></div>
+
+  <button onclick="recordsUI()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">Back</button>`;
+  renderSeats(st);
+}
+
+/* ---------- CINEMA SEATS ---------- */
+function renderSeats(student){
+  seats.style.gridTemplateColumns = `repeat(${DB.rooms.cols},1fr)`;
+  seats.innerHTML="";
+  for(let i=1;i<=DB.rooms.rows*DB.rooms.cols;i++){
+    const taken = DB.students.find(s=>s.seat===i);
+    seats.innerHTML+=`
+    <div onclick="assignSeat('${student.studentNo}',${i})"
+      class="cursor-pointer border rounded p-3 text-center font-bold
+      ${taken?(taken.studentNo===student.studentNo?"bg-blue-400":"bg-red-300"):"bg-green-200"}">
+      ${i}
+    </div>`;
+  }
+}
+
+function assignSeat(stNo,seatNo){
+  DB.students.forEach(s=>{ if(s.seat===seatNo) s.seat=null; });
+  DB.students.find(s=>s.studentNo===stNo).seat=seatNo;
+  saveDB(); editStudent(stNo);
 }
 
 /* ---------- ROOM ---------- */
 function roomUI(){
   content.innerHTML=`
-    <h3>Room Configuration</h3>
-    <input id="rr" type="number" value="${DB.room.r}">
-    <input id="cc" type="number" value="${DB.room.c}">
-    <button class="btn-green" onclick="saveRoom()">Save</button>`;
+  <h3 class="font-bold mb-2">Room Configuration</h3>
+  <input id="rRows" type="number" class="border p-2 w-full mb-2" value="${DB.rooms.rows}">
+  <input id="rCols" type="number" class="border p-2 w-full mb-2" value="${DB.rooms.cols}">
+  <button onclick="saveRoom()" class="bg-green-600 text-white px-4 py-2 rounded">Save</button>`;
 }
 function saveRoom(){
-  DB.room.r=+rr.value;
-  DB.room.c=+cc.value;
-  save(); alert("Room updated");
+  DB.rooms.rows=Number(rRows.value);
+  DB.rooms.cols=Number(rCols.value);
+  DB.students.forEach(s=>{ if(s.seat>DB.rooms.rows*DB.rooms.cols) s.seat=null; });
+  saveDB(); alert("Room updated");
 }
 
-/* ---------- PROFESSOR ---------- */
-function professorUI(p){
+/* ================= PROFESSOR ================= */
+function professorUI(prof){
   app.innerHTML=`
-  <div class="card">
-    <h2>Professor</h2>
-    <input id="scan" placeholder="RFID / Student No">
-    <div id="att"></div>
-    <button class="btn-gray" onclick="loginUI()">Logout</button>
+  <div class="bg-white p-6 rounded shadow max-w-4xl mx-auto">
+    <h2 class="text-xl font-bold mb-4">Professor: ${prof.name}</h2>
+
+    <select id="profSub" class="border p-2 w-full mb-3">
+      ${DB.subjects.filter(s=>s.professor===prof.username)
+        .map(s=>`<option value="${s.id}">${s.code}</option>`).join("")}
+    </select>
+
+    <button onclick="startSession()" class="bg-green-600 text-white px-4 py-2 rounded mb-3">
+      Start Session
+    </button>
+
+    <input id="scanInput" class="border p-2 w-full mb-3"
+      placeholder="RFID / Student No then ENTER">
+
+    <div id="attTable"></div>
+
+    <button onclick="exportProfessorExcel()"
+      class="mt-3 bg-emerald-600 text-white px-4 py-2 rounded">
+      Export Attendance to Excel
+    </button>
+
+    <button onclick="renderLogin()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">
+      Logout
+    </button>
   </div>`;
-  scan.addEventListener("keydown",e=>{
-    if(e.key==="Enter"){
-      DB.att.push({no:scan.value,time:new Date().toLocaleTimeString(),status:"PRESENT"});
-      save();
-      att.innerHTML=`<p>${scan.value} - PRESENT</p>`;
-      scan.value="";
-    }
+  scanInput.addEventListener("keydown",e=>{ if(e.key==="Enter") autoTap(); });
+}
+
+function startSession(){
+  DB.session.active=true;
+  DB.session.subjectId=Number(profSub.value);
+  saveDB(); alert("Session started");
+}
+
+function autoTap(){
+  const uid = scanInput.value.trim();
+  const st = DB.students.find(s=>s.studentNo===uid);
+  if(!st) return alert("Student not found");
+
+  const today=["SUN","MON","TUE","WED","THU","FRI","SAT"][new Date().getDay()];
+  const sch = st.schedules.find(s=>s.subjectId===DB.session.subjectId && s.day===today);
+  if(!sch) return alert("No schedule today");
+
+  const now=new Date();
+  const [h,m]=sch.startTime.split(":").map(Number);
+  const t=new Date(); t.setHours(h,m,0,0);
+
+  DB.attendance.unshift({
+    studentNo:uid,
+    subjectId:sch.subjectId,
+    time:now.toLocaleTimeString(),
+    status: now<=t ? "PRESENT":"LATE"
   });
+  saveDB(); renderAttendance(); scanInput.value="";
 }
 
-/* ---------- STUDENT ---------- */
-function studentUI(s){
+function renderAttendance(){
+  const list=DB.attendance.filter(a=>a.subjectId===DB.session.subjectId);
+  attTable.innerHTML=`
+  <table class="w-full border text-sm text-center">
+    <tr class="bg-slate-200">
+      <th>Student</th><th>Time</th><th>Status</th>
+    </tr>
+    ${list.map(a=>`
+      <tr>
+        <td>${a.studentNo}</td>
+        <td>${a.time}</td>
+        <td>${a.status}</td>
+      </tr>`).join("")}
+  </table>`;
+}
+
+/* ---------- PROFESSOR EXCEL ---------- */
+function exportProfessorExcel(){
+  const sid = DB.session.subjectId;
+  const subj = DB.subjects.find(s=>s.id===sid);
+  let csv="Student,Subject,Time,Status\n";
+  DB.attendance.filter(a=>a.subjectId===sid)
+    .forEach(a=> csv+=`${a.studentNo},${subj.code},${a.time},${a.status}\n`);
+  downloadCSV(csv,`Attendance_${subj.code}.csv`);
+}
+
+/* ================= STUDENT ================= */
+function studentUI(st){
+  const rows = DB.attendance.filter(a=>a.studentNo===st.studentNo);
   app.innerHTML=`
-  <div class="card">
-    <h2>Student Portal</h2>
-    ${s.sched.map(x=>`<p>${x.sub} | ${x.day} | ${x.time}</p>`).join("")}
-    <button class="btn-gray" onclick="loginUI()">Logout</button>
+  <div class="bg-white p-6 rounded shadow max-w-xl mx-auto">
+    <h2 class="text-xl font-bold mb-4">My Schedule</h2>
+    ${st.schedules.map(s=>{
+      const sub=DB.subjects.find(x=>x.id===s.subjectId);
+      return `<p>${sub.code} | ${s.day} | ${s.startTime}</p>`;
+    }).join("")}
+
+    <h2 class="text-xl font-bold mt-4 mb-2">My Attendance</h2>
+    ${rows.map(r=>{
+      const sub=DB.subjects.find(x=>x.id===r.subjectId);
+      return `<p>${sub.code} | ${r.time} | ${r.status}</p>`;
+    }).join("")}
+
+    <button onclick="exportStudentExcel('${st.studentNo}')"
+      class="mt-3 bg-emerald-600 text-white px-4 py-2 rounded">
+      Export My Attendance
+    </button>
+
+    <button onclick="renderLogin()" class="mt-4 bg-gray-500 text-white px-3 py-1 rounded">
+      Logout
+    </button>
   </div>`;
 }
 
-loginUI();
+/* ---------- STUDENT EXCEL ---------- */
+function exportStudentExcel(stNo){
+  let csv="Student,Subject,Time,Status\n";
+  DB.attendance.filter(a=>a.studentNo===stNo).forEach(a=>{
+    const sub=DB.subjects.find(s=>s.id===a.subjectId);
+    csv+=`${a.studentNo},${sub.code},${a.time},${a.status}\n`;
+  });
+  downloadCSV(csv,`My_Attendance_${stNo}.csv`);
+}
+
+/* ---------- CSV DOWNLOAD ---------- */
+function downloadCSV(content, filename){
+  const blob=new Blob([content],{type:"text/csv;charset=utf-8;"});
+  const link=document.createElement("a");
+  link.href=URL.createObjectURL(blob);
+  link.download=filename;
+  link.click();
+}
