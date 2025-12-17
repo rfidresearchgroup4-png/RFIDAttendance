@@ -1,12 +1,11 @@
-/* ================================
-   RFID ATTENDANCE SYSTEM
-   FULL ONE-DROP VERSION
-   ================================ */
+/* =====================================================
+   RFID ATTENDANCE SYSTEM - FULL FINAL VERSION
+   ===================================================== */
 
-console.log("FULL SYSTEM LOADED");
+console.log("RFID FULL SYSTEM FINAL LOADED");
 
 const app = document.getElementById("app");
-const KEY = "RFID_FULL_SYS";
+const KEY = "RFID_FULL_FINAL";
 
 /* ================= DATABASE ================= */
 let DB = JSON.parse(localStorage.getItem(KEY)) || {
@@ -14,11 +13,22 @@ let DB = JSON.parse(localStorage.getItem(KEY)) || {
   professors: [],
   students: [],
   subjects: [],
-  attendance: []
+  attendance: [],
+  room: { rows: 5, cols: 8 }
 };
 
 function save() {
   localStorage.setItem(KEY, JSON.stringify(DB));
+}
+
+/* ================= UTIL ================= */
+function csvExport(filename, rows) {
+  const csv = rows.map(r => r.map(v => `"${v}"`).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
 }
 
 /* ================= LOGIN ================= */
@@ -56,129 +66,178 @@ function registrarUI() {
   <div class="card">
     <h2>Registrar Panel</h2>
     <div class="nav">
-      <button class="btn-blue" onclick="enrollUI()">Enroll Student</button>
-      <button class="btn-purple" onclick="subjectUI()">Subjects</button>
+      <button class="btn-blue" onclick="studentsUI()">Students</button>
+      <button class="btn-purple" onclick="subjectsUI()">Subjects</button>
       <button class="btn-green" onclick="profUI()">Professors</button>
-      <button class="btn-gray" onclick="recordsUI()">Student Records</button>
+      <button class="btn-blue" onclick="seatUI()">Seats</button>
+      <button class="btn-gray" onclick="exportAll()">Export</button>
       <button class="btn-gray" onclick="loginUI()">Logout</button>
     </div>
     <div id="content"></div>
   </div>`;
-  enrollUI();
+  studentsUI();
 }
 
-/* ---------- ENROLL ---------- */
-function enrollUI() {
-  content.innerHTML = `
-    <h3>Enroll Student</h3>
-    <input id="sno" placeholder="Student Number (UID)">
-    <input id="sname" placeholder="Student Name">
-    <button class="btn-green" onclick="saveStudent()">Save</button>`;
-}
-
-function saveStudent() {
-  if (DB.students.find(x => x.no === sno.value)) {
-    alert("Student exists"); return;
-  }
-  DB.students.push({ no: sno.value, name: sname.value, subjects: [] });
-  save(); alert("Saved");
-}
-
-/* ---------- PROFESSORS ---------- */
-function profUI() {
-  content.innerHTML = `
-    <h3>Professors</h3>
-    <input id="pu" placeholder="Username">
-    <input id="pp" placeholder="Password">
-    <button class="btn-green" onclick="addProf()">Add</button>
-    <ul>${DB.professors.map(p => `<li>${p.u}</li>`).join("")}</ul>`;
-}
-function addProf() {
-  DB.professors.push({ u: pu.value, p: pp.value });
-  save(); profUI();
-}
-
-/* ---------- SUBJECTS ---------- */
-function subjectUI() {
-  content.innerHTML = `
-    <h3>Subjects</h3>
-    <input id="scode" placeholder="Subject Code">
-    <select id="sprof">${DB.professors.map(p => `<option>${p.u}</option>`)}</select>
-    <select id="sday"><option>MON</option><option>TUE</option><option>WED</option></select>
-    <input id="stime" type="time" value="08:00">
-    <button class="btn-green" onclick="addSubject()">Add</button>
-    <ul>${DB.subjects.map(s => `<li>${s.code} (${s.prof})</li>`).join("")}</ul>`;
-}
-function addSubject() {
-  DB.subjects.push({
-    code: scode.value,
-    prof: sprof.value,
-    day: sday.value,
-    time: stime.value
-  });
-  save(); subjectUI();
-}
-
-/* ---------- STUDENT RECORDS ---------- */
-function recordsUI() {
+/* ================= STUDENTS ================= */
+function studentsUI() {
   content.innerHTML = `
     <h3>Students</h3>
-    ${DB.students.map(s => `
-      <div class="card">
-        <b>${s.no}</b> - ${s.name}
-        <select onchange="assignSub('${s.no}',this.value)">
-          <option value="">Assign Subject</option>
-          ${DB.subjects.map(x => `<option>${x.code}</option>`)}
-        </select>
-        <div>${s.subjects.join(", ")}</div>
-      </div>`).join("")}`;
+
+    <table class="table">
+      <tr>
+        <th>No</th><th>Name</th><th>Seat</th><th>Subjects</th><th>Action</th>
+      </tr>
+      <tr>
+        <td><input id="sno"></td>
+        <td><input id="sname"></td>
+        <td>-</td>
+        <td>-</td>
+        <td><button class="btn-green" onclick="addStudent()">Add</button></td>
+      </tr>
+      ${DB.students.map((s,i)=>`
+        <tr>
+          <td>${s.no}</td>
+          <td>${s.name}</td>
+          <td>${s.seat || "-"}</td>
+          <td>${s.subjects.join(", ")}</td>
+          <td>
+            <button onclick="editStudent(${i})">Edit</button>
+            <button onclick="delStudent(${i})">Delete</button>
+          </td>
+        </tr>`).join("")}
+    </table>`;
 }
 
-function assignSub(no, code) {
-  const st = DB.students.find(x => x.no === no);
-  if (!st.subjects.includes(code)) st.subjects.push(code);
-  save(); recordsUI();
+function addStudent(){
+  DB.students.push({no:sno.value,name:sname.value,subjects:[],seat:null});
+  save(); studentsUI();
+}
+function delStudent(i){DB.students.splice(i,1);save();studentsUI();}
+function editStudent(i){
+  const s=DB.students[i];
+  const n=prompt("Name",s.name);
+  if(n){s.name=n;save();studentsUI();}
 }
 
-/* ================= PROFESSOR ================= */
-function professorUI(p) {
-  app.innerHTML = `
-    <div class="card">
-      <h2>Professor Panel (${p.u})</h2>
-      <input id="scan" placeholder="Student No">
-      <div id="log"></div>
-      <button class="btn-gray" onclick="loginUI()">Logout</button>
-    </div>`;
-  scan.addEventListener("keydown", e => {
-    if (e.key === "Enter") takeAttendance(scan.value);
+/* ================= PROFESSORS ================= */
+function profUI(){
+  content.innerHTML=`
+  <h3>Professors</h3>
+  <table class="table">
+    <tr><th>User</th><th>Pass</th><th>Action</th></tr>
+    <tr>
+      <td><input id="pu"></td>
+      <td><input id="pp"></td>
+      <td><button onclick="addProf()">Add</button></td>
+    </tr>
+    ${DB.professors.map((p,i)=>`
+      <tr>
+        <td>${p.u}</td>
+        <td>${p.p}</td>
+        <td><button onclick="DB.professors.splice(${i},1);save();profUI()">Delete</button></td>
+      </tr>`).join("")}
+  </table>`;
+}
+function addProf(){DB.professors.push({u:pu.value,p:pp.value});save();profUI();}
+
+/* ================= SUBJECTS ================= */
+function subjectsUI(){
+  content.innerHTML=`
+  <h3>Subjects</h3>
+  <table class="table">
+    <tr><th>Code</th><th>Prof</th><th>Day</th><th>Time</th><th>Action</th></tr>
+    <tr>
+      <td><input id="scode"></td>
+      <td><select id="sprof">${DB.professors.map(p=>`<option>${p.u}</option>`)}</select></td>
+      <td><select id="sday"><option>MON</option><option>TUE</option><option>WED</option></select></td>
+      <td><input id="stime" type="time"></td>
+      <td><button onclick="addSub()">Add</button></td>
+    </tr>
+    ${DB.subjects.map((s,i)=>`
+      <tr>
+        <td>${s.code}</td>
+        <td>${s.prof}</td>
+        <td>${s.day}</td>
+        <td>${s.time}</td>
+        <td><button onclick="DB.subjects.splice(${i},1);save();subjectsUI()">Delete</button></td>
+      </tr>`).join("")}
+  </table>`;
+}
+function addSub(){
+  DB.subjects.push({code:scode.value,prof:sprof.value,day:sday.value,time:stime.value});
+  save(); subjectsUI();
+}
+
+/* ================= SEATS ================= */
+function seatUI(){
+  content.innerHTML=`
+  <h3>Seat Assignment</h3>
+  <div class="seats" style="grid-template-columns:repeat(${DB.room.cols},1fr)">
+    ${Array.from({length:DB.room.rows*DB.room.cols},(_,i)=>{
+      const s=DB.students.find(x=>x.seat===i+1);
+      return `<div class="seat ${s?'taken':'free'}" onclick="assignSeat(${i+1})">${i+1}</div>`;
+    }).join("")}
+  </div>`;
+}
+function assignSeat(n){
+  const uid=prompt("Student No");
+  const st=DB.students.find(x=>x.no===uid);
+  if(st){st.seat=n;save();seatUI();}
+}
+
+/* ================= PROFESSOR PANEL ================= */
+function professorUI(p){
+  app.innerHTML=`
+  <div class="card">
+    <h2>Professor (${p.u})</h2>
+    <input id="scan" placeholder="Student No">
+    <table class="table">
+      <tr><th>No</th><th>Time</th><th>Status</th></tr>
+      <tbody id="log"></tbody>
+    </table>
+    <button onclick="loginUI()">Logout</button>
+  </div>`;
+  scan.addEventListener("keydown",e=>{
+    if(e.key==="Enter"){
+      const t=new Date();
+      DB.attendance.push({no:scan.value,time:t.toLocaleTimeString(),status:t.getMinutes()==0?"PRESENT":"LATE"});
+      save();
+      log.innerHTML+=`<tr><td>${scan.value}</td><td>${t.toLocaleTimeString()}</td><td>${t.getMinutes()==0?"PRESENT":"LATE"}</td></tr>`;
+      scan.value="";
+    }
   });
 }
 
-function takeAttendance(no) {
-  const now = new Date();
-  DB.attendance.push({
-    no,
-    time: now.toLocaleTimeString(),
-    status: now.getMinutes() === 0 ? "PRESENT" : "LATE"
-  });
-  save();
-  log.innerHTML += `<p>${no} - ${DB.attendance.at(-1).status}</p>`;
-  scan.value = "";
+/* ================= STUDENT PANEL ================= */
+function studentUI(s){
+  app.innerHTML=`
+  <div class="card">
+    <h2>Student Portal</h2>
+    <p>${s.no} - ${s.name}</p>
+
+    <h4>Subjects</h4>
+    <table class="table">${s.subjects.map(x=>`<tr><td>${x}</td></tr>`).join("")}</table>
+
+    <h4>Attendance</h4>
+    <table class="table">
+      ${DB.attendance.filter(a=>a.no===s.no)
+        .map(a=>`<tr><td>${a.time}</td><td>${a.status}</td></tr>`).join("")}
+    </table>
+
+    <button onclick="loginUI()">Logout</button>
+  </div>`;
 }
 
-/* ================= STUDENT ================= */
-function studentUI(s) {
-  app.innerHTML = `
-    <div class="card">
-      <h2>Student Portal</h2>
-      <p>${s.no} - ${s.name}</p>
-      <h4>Subjects</h4>
-      ${s.subjects.join("<br>") || "None"}
-      <h4>Attendance</h4>
-      ${DB.attendance.filter(a => a.no === s.no)
-        .map(a => `${a.time} - ${a.status}`).join("<br>") || "No record"}
-      <button class="btn-gray" onclick="loginUI()">Logout</button>
-    </div>`;
+/* ================= EXPORT ================= */
+function exportAll(){
+  csvExport("students.csv", [["No","Name","Seat","Subjects"],
+    ...DB.students.map(s=>[s.no,s.name,s.seat,s.subjects.join("|")])]);
+
+  csvExport("subjects.csv", [["Code","Prof","Day","Time"],
+    ...DB.subjects.map(s=>[s.code,s.prof,s.day,s.time])]);
+
+  csvExport("attendance.csv", [["No","Time","Status"],
+    ...DB.attendance.map(a=>[a.no,a.time,a.status])]);
 }
 
 /* ================= INIT ================= */
