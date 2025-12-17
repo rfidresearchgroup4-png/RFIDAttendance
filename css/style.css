@@ -1,9 +1,11 @@
 body{
   margin:0;
-  font-family:Segoe UI, Arial, sans-serif;
+  font-family: "Segoe UI", Arial, sans-serif;
   background:#f4f6f9;
+  color:#0f172a;
 }
 
+/* HEADER */
 .topbar{
   display:flex;
   align-items:center;
@@ -14,33 +16,56 @@ body{
 }
 
 .logo{
-  height:55px;
+  height:60px;
+  width:auto;
   background:#fff;
   border-radius:50%;
   padding:6px;
 }
 
-.school{font-size:20px;font-weight:700}
-.system{font-size:14px;opacity:.9}
+.school{
+  font-size:20px;
+  font-weight:700;
+}
 
+.system{
+  font-size:14px;
+  opacity:.9;
+}
+
+/* LAYOUT */
 .container{
   max-width:1200px;
   margin:30px auto;
 }
 
+/* CARD */
 .card{
   background:#fff;
   padding:25px;
   border-radius:10px;
-  box-shadow:0 4px 15px rgba(0,0,0,.08);
+  box-shadow:0 6px 18px rgba(0,0,0,.08);
+  margin-bottom:20px;
 }
 
+/* NAV */
 .nav{
   display:flex;
   gap:10px;
   margin-bottom:20px;
 }
 
+/* FORM */
+input, select{
+  width:100%;
+  padding:10px;
+  margin-bottom:14px;
+  border-radius:6px;
+  border:1px solid #d1d5db;
+  font-size:14px;
+}
+
+/* BUTTONS */
 button{
   border:none;
   border-radius:6px;
@@ -54,14 +79,7 @@ button{
 .btn-green{background:#22c55e;color:#fff}
 .btn-gray{background:#6b7280;color:#fff}
 
-input,select{
-  width:100%;
-  padding:10px;
-  border-radius:6px;
-  border:1px solid #d1d5db;
-  margin-bottom:15px;
-}
-
+/* TABLE */
 .table{
   width:100%;
   border-collapse:collapse;
@@ -78,6 +96,7 @@ input,select{
   border-bottom:1px solid #e5e7eb;
 }
 
+/* BADGE */
 .badge{
   padding:4px 10px;
   border-radius:20px;
@@ -85,22 +104,5 @@ input,select{
   font-weight:700;
   color:#fff;
 }
-
 .badge.green{background:#16a34a}
 .badge.red{background:#dc2626}
-
-.seats{
-  display:grid;
-  gap:8px;
-}
-
-.seat{
-  padding:10px;
-  border-radius:6px;
-  text-align:center;
-  font-weight:700;
-}
-
-.free{background:#bbf7d0}
-.taken{background:#fecaca}
-.mine{background:#93c5fd}
