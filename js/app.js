@@ -1,6 +1,6 @@
 /* ==================================================
    RFID ATTENDANCE SYSTEM
-   STABLE BASELINE + PASSWORD FEATURES
+   STABLE BASELINE + NAME DISPLAY
    ================================================== */
 
 const app = document.getElementById("app");
@@ -198,13 +198,13 @@ function addProf() {
 }
 
 /* ---------------- PROFESSOR PANEL ---------------- */
-function professorUI(p) {
+function professorUI() {
   app.innerHTML = `
     <div class="card">
       <h2>Professor Panel</h2>
-      <input id="scan" placeholder="Student No">
+      <input id="scan" placeholder="Scan RFID / Student No">
       <table class="table">
-        <tr><th>Student</th><th>Time</th><th>Status</th></tr>
+        <tr><th>Student Name</th><th>Time</th><th>Status</th></tr>
         <tbody id="log"></tbody>
       </table>
       <button onclick="changePasswordUI()">Change Password</button>
@@ -213,23 +213,42 @@ function professorUI(p) {
   `;
 
   scan.addEventListener("keydown", e => {
-    if (e.key === "Enter") takeAttendance(scan.value);
+    if (e.key === "Enter") takeAttendance(scan.value.trim());
   });
 }
 
 function takeAttendance(no) {
+  const student = DB.students.find(s => s.no === no);
+  if (!student) {
+    alert("Student not found");
+    return;
+  }
+
   const now = new Date();
   const status = now.getMinutes() === 0 ? "PRESENT" : "LATE";
-  DB.attendance.push({ no, time: now.toLocaleTimeString(), status });
+
+  DB.attendance.push({
+    no: student.no,
+    name: student.name,
+    time: now.toLocaleTimeString(),
+    status
+  });
+
   saveDB();
+
   log.innerHTML += `
-    <tr><td>${no}</td><td>${now.toLocaleTimeString()}</td><td>${status}</td></tr>
+    <tr>
+      <td>${student.name}</td>
+      <td>${now.toLocaleTimeString()}</td>
+      <td>${status}</td>
+    </tr>
   `;
 }
 
 /* ---------------- STUDENT PANEL ---------------- */
 function studentUI(s) {
   const my = DB.attendance.filter(a => a.no === s.no);
+
   app.innerHTML = `
     <div class="card">
       <h2>${s.name}</h2>
@@ -239,7 +258,10 @@ function studentUI(s) {
       <table class="table">
         <tr><th>Time</th><th>Status</th></tr>
         ${my.map(a => `
-          <tr><td>${a.time}</td><td>${a.status}</td></tr>
+          <tr>
+            <td>${a.time}</td>
+            <td>${a.status}</td>
+          </tr>
         `).join("")}
       </table>
       <button onclick="logout()">Logout</button>
@@ -267,7 +289,7 @@ function changePasswordUI() {
 }
 
 function changePassword() {
-  const oldp = oldpInput = document.getElementById("oldp").value;
+  const oldp = document.getElementById("oldp").value;
   const newp = document.getElementById("newp").value;
 
   if (currentUser.p !== oldp) {
