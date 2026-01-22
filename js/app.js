@@ -1,6 +1,6 @@
 /* ==================================================
    RFID ATTENDANCE SYSTEM
-   STABLE BASELINE + NAME DISPLAY
+   STABLE BASELINE + NAME DISPLAY + SEAT ARRANGEMENT
    ================================================== */
 
 const app = document.getElementById("app");
@@ -15,6 +15,13 @@ const DB = {
   subjects: JSON.parse(localStorage.getItem("subjects")) || [],
   attendance: JSON.parse(localStorage.getItem("attendance")) || []
 };
+
+/* ---------------- MIGRATION (add seat field) ---------------- */
+DB.students = DB.students.map(s => ({
+  ...s,
+  seat: s.seat || "" // NEW
+}));
+saveDB();
 
 function saveDB() {
   Object.keys(DB).forEach(k =>
@@ -82,6 +89,7 @@ function registrarUI(tab = "students") {
         <button onclick="registrarUI('students')">Students</button>
         <button onclick="registrarUI('subjects')">Subjects</button>
         <button onclick="registrarUI('professors')">Professors</button>
+        <button onclick="registrarUI('seats')">Seat Arrangement</button>
         <button onclick="changePasswordUI()">Change Password</button>
         <button onclick="logout()">Logout</button>
       </div>
@@ -92,6 +100,7 @@ function registrarUI(tab = "students") {
   if (tab === "students") studentsUI();
   if (tab === "subjects") subjectsUI();
   if (tab === "professors") professorsUI();
+  if (tab === "seats") seatsUI();
 }
 
 /* ---------------- STUDENTS ---------------- */
@@ -100,11 +109,12 @@ function studentsUI() {
     <h3>Students</h3>
     <table class="table">
       <tr>
-        <th>No</th><th>Name</th><th>Subjects</th>
+        <th>No</th><th>Name</th><th>Seat</th><th>Subjects</th>
       </tr>
       <tr>
         <td><input id="sno"></td>
         <td><input id="sname"></td>
+        <td><input id="sseat" placeholder="e.g. A-01"></td>
         <td><button onclick="addStudent()">Add</button></td>
       </tr>
       ${DB.students.map(s => `
@@ -112,13 +122,18 @@ function studentsUI() {
           <td>${s.no}</td>
           <td>${s.name}</td>
           <td>
+            <input value="${s.seat || ""}"
+                   placeholder="Seat"
+                   oninput="updateSeat('${s.no}', this.value)">
+          </td>
+          <td>
             <select onchange="assignSubject('${s.no}', this.value)">
               <option value="">Assign subject</option>
               ${DB.subjects.map(sub =>
                 `<option value="${sub.code}">${sub.code}</option>`
               ).join("")}
             </select>
-            <br>${s.subjects.join(", ")}
+            <br>${(s.subjects || []).join(", ")}
           </td>
         </tr>
       `).join("")}
@@ -127,8 +142,22 @@ function studentsUI() {
 }
 
 function addStudent() {
-  DB.students.push({ no: sno.value, name: sname.value, subjects: [] });
+  const no = sno.value.trim();
+  const name = sname.value.trim();
+  const seat = (document.getElementById("sseat").value || "").trim();
+
+  if (!no || !name) return alert("Student No and Name required");
+  if (DB.students.some(s => s.no === no)) return alert("Student No already exists");
+
+  DB.students.push({ no, name, seat, subjects: [] });
   saveDB(); studentsUI();
+}
+
+function updateSeat(no, seat) {
+  const s = DB.students.find(x => x.no === no);
+  if (!s) return;
+  s.seat = (seat || "").trim();
+  saveDB();
 }
 
 function assignSubject(no, code) {
@@ -136,6 +165,102 @@ function assignSubject(no, code) {
   const s = DB.students.find(x => x.no === no);
   if (!s.subjects.includes(code)) s.subjects.push(code);
   saveDB(); studentsUI();
+}
+
+/* ---------------- SEAT ARRANGEMENT ----------------
+   Simple view: shows who sits on what seat
+   You can search by seat and reassign quickly.
+--------------------------------------------------- */
+function seatsUI() {
+  // sort by seat then name
+  const list = DB.students.slice().sort((a,b) => (a.seat||"").localeCompare(b.seat||"") || a.name.localeCompare(b.name));
+
+  content.innerHTML = `
+    <h3>Seat Arrangement</h3>
+    <p style="margin-top:-6px;opacity:.8">Assign seats per student (e.g., A-01, A-02, B-01...).</p>
+
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
+      <input id="seatSearch" placeholder="Search seat / name / student no" style="flex:1" oninput="renderSeatTable()">
+      <button onclick="autoSeatFill()">Auto Fill Seats</button>
+    </div>
+
+    <table class="table">
+      <thead>
+        <tr><th>Seat</th><th>Student No</th><th>Name</th><th>Update Seat</th></tr>
+      </thead>
+      <tbody id="seatBody"></tbody>
+    </table>
+
+    <p style="opacity:.7;margin-top:10px">
+      Tip: Use format like <b>A-01</b>, <b>A-02</b>... for easy sorting.
+    </p>
+  `;
+
+  renderSeatTable();
+}
+
+function renderSeatTable() {
+  const q = (document.getElementById("seatSearch")?.value || "").trim().toLowerCase();
+  const body = document.getElementById("seatBody");
+  if (!body) return;
+
+  const list = DB.students
+    .slice()
+    .sort((a,b) => (a.seat||"").localeCompare(b.seat||"") || a.name.localeCompare(b.name))
+    .filter(s => {
+      if (!q) return true;
+      const hay = `${s.seat||""} ${s.no||""} ${s.name||""}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+  body.innerHTML = list.map(s => `
+    <tr>
+      <td>${s.seat || "-"}</td>
+      <td>${s.no}</td>
+      <td>${s.name}</td>
+      <td>
+        <input value="${s.seat || ""}" placeholder="e.g. A-01"
+               oninput="updateSeat('${s.no}', this.value)">
+      </td>
+    </tr>
+  `).join("");
+}
+
+/* Auto fill seats (optional helper)
+   - Fills blank seats only
+   - Uses A-01, A-02... then B-01... up to Z
+*/
+function autoSeatFill() {
+  if (!confirm("Auto-fill seats for students with blank seat?")) return;
+
+  const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+  let idx = 0;
+
+  // get used seats
+  const used = new Set(DB.students.map(s => (s.seat||"").trim()).filter(Boolean));
+
+  function nextSeat() {
+    while (true) {
+      const row = Math.floor(idx / 50); // 50 seats per letter row
+      const col = (idx % 50) + 1;
+      idx++;
+      const seat = `${letters[row] || "Z"}-${String(col).padStart(2,"0")}`;
+      if (!used.has(seat)) {
+        used.add(seat);
+        return seat;
+      }
+    }
+  }
+
+  DB.students.forEach(s => {
+    if (!s.seat || !s.seat.trim()) {
+      s.seat = nextSeat();
+    }
+  });
+
+  saveDB();
+  seatsUI();
+  alert("Seats auto-filled!");
 }
 
 /* ---------------- SUBJECTS ---------------- */
@@ -204,7 +329,7 @@ function professorUI() {
       <h2>Professor Panel</h2>
       <input id="scan" placeholder="Scan RFID / Student No">
       <table class="table">
-        <tr><th>Student Name</th><th>Time</th><th>Status</th></tr>
+        <tr><th>Student Name</th><th>Seat</th><th>Time</th><th>Status</th></tr>
         <tbody id="log"></tbody>
       </table>
       <button onclick="changePasswordUI()">Change Password</button>
@@ -230,6 +355,7 @@ function takeAttendance(no) {
   DB.attendance.push({
     no: student.no,
     name: student.name,
+    seat: student.seat || "",
     time: now.toLocaleTimeString(),
     status
   });
@@ -239,6 +365,7 @@ function takeAttendance(no) {
   log.innerHTML += `
     <tr>
       <td>${student.name}</td>
+      <td>${student.seat || ""}</td>
       <td>${now.toLocaleTimeString()}</td>
       <td>${status}</td>
     </tr>
@@ -252,8 +379,11 @@ function studentUI(s) {
   app.innerHTML = `
     <div class="card">
       <h2>${s.name}</h2>
+      <p><b>Seat:</b> ${s.seat || "-"}</p>
+
       <h4>Subjects</h4>
-      <ul>${s.subjects.map(x => `<li>${x}</li>`).join("")}</ul>
+      <ul>${(s.subjects || []).map(x => `<li>${x}</li>`).join("")}</ul>
+
       <h4>Attendance</h4>
       <table class="table">
         <tr><th>Time</th><th>Status</th></tr>
@@ -264,6 +394,7 @@ function studentUI(s) {
           </tr>
         `).join("")}
       </table>
+
       <button onclick="logout()">Logout</button>
     </div>
   `;
