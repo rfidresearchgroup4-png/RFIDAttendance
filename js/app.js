@@ -1,6 +1,9 @@
 /* ==================================================
    RFID ATTENDANCE SYSTEM
    STABLE BASELINE + NAME DISPLAY + SEAT ARRANGEMENT
+   + FIXED DAY/TIME LOGIC (PRESENT/LATE)
+   + SUBJECT PICKER (Professor)
+   + GRACE PERIOD (minutes)
    ================================================== */
 
 const app = document.getElementById("app");
@@ -16,20 +19,46 @@ const DB = {
   attendance: JSON.parse(localStorage.getItem("attendance")) || []
 };
 
-/* ---------------- MIGRATION (add seat field) ---------------- */
-DB.students = DB.students.map(s => ({
-  ...s,
-  seat: s.seat || "" // NEW
-}));
-saveDB();
-
 function saveDB() {
   Object.keys(DB).forEach(k =>
     localStorage.setItem(k, JSON.stringify(DB[k]))
   );
 }
 
+/* ---------------- MIGRATION (add seat field + subject grace) ---------------- */
+DB.students = DB.students.map(s => ({
+  ...s,
+  seat: s.seat || ""
+}));
+
+DB.subjects = DB.subjects.map(sub => ({
+  ...sub,
+  grace: (sub.grace === undefined || sub.grace === null) ? 5 : Number(sub.grace) // default 5 mins
+}));
+
+saveDB();
+
 let currentUser = null;
+
+/* ---------------- TIME HELPERS ---------------- */
+function pad2(n) { return String(n).padStart(2, "0"); }
+
+function hmToMin(hm) {
+  if (!hm) return 0;
+  const [h, m] = hm.split(":").map(Number);
+  return (h * 60) + m;
+}
+
+function nowHM() {
+  const d = new Date();
+  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+}
+
+function todayShort() {
+  // returns "MON","TUE",...
+  const d = new Date();
+  return ["SUN","MON","TUE","WED","THU","FRI","SAT"][d.getDay()];
+}
 
 /* ---------------- LOGIN ---------------- */
 function loginUI() {
@@ -46,6 +75,9 @@ function loginUI() {
 
       <button onclick="login()">Login</button>
       <p><b>admin / 123</b></p>
+      <p style="opacity:.7;font-size:12px">
+        Tip: Add subjects with Day (MON/TUE/...) and Time (HH:MM). Default grace = 5 minutes.
+      </p>
     </div>
   `;
 }
@@ -68,7 +100,7 @@ function login() {
   const prof = DB.professors.find(x => x.u === u && x.p === p);
   if (prof) {
     currentUser = prof;
-    return professorUI(prof);
+    return professorUI();
   }
 
   const student = DB.students.find(x => x.no === u);
@@ -163,22 +195,15 @@ function updateSeat(no, seat) {
 function assignSubject(no, code) {
   if (!code) return;
   const s = DB.students.find(x => x.no === no);
+  if (!s.subjects) s.subjects = [];
   if (!s.subjects.includes(code)) s.subjects.push(code);
   saveDB(); studentsUI();
 }
 
-/* ---------------- SEAT ARRANGEMENT ----------------
-   Simple view: shows who sits on what seat
-   You can search by seat and reassign quickly.
---------------------------------------------------- */
+/* ---------------- SEAT ARRANGEMENT ---------------- */
 function seatsUI() {
-  // sort by seat then name
-  const list = DB.students.slice().sort((a,b) => (a.seat||"").localeCompare(b.seat||"") || a.name.localeCompare(b.name));
-
   content.innerHTML = `
     <h3>Seat Arrangement</h3>
-    <p style="margin-top:-6px;opacity:.8">Assign seats per student (e.g., A-01, A-02, B-01...).</p>
-
     <div style="display:flex;gap:8px;flex-wrap:wrap;margin:10px 0">
       <input id="seatSearch" placeholder="Search seat / name / student no" style="flex:1" oninput="renderSeatTable()">
       <button onclick="autoSeatFill()">Auto Fill Seats</button>
@@ -190,12 +215,7 @@ function seatsUI() {
       </thead>
       <tbody id="seatBody"></tbody>
     </table>
-
-    <p style="opacity:.7;margin-top:10px">
-      Tip: Use format like <b>A-01</b>, <b>A-02</b>... for easy sorting.
-    </p>
   `;
-
   renderSeatTable();
 }
 
@@ -226,22 +246,17 @@ function renderSeatTable() {
   `).join("");
 }
 
-/* Auto fill seats (optional helper)
-   - Fills blank seats only
-   - Uses A-01, A-02... then B-01... up to Z
-*/
 function autoSeatFill() {
   if (!confirm("Auto-fill seats for students with blank seat?")) return;
 
   const letters = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
   let idx = 0;
 
-  // get used seats
   const used = new Set(DB.students.map(s => (s.seat||"").trim()).filter(Boolean));
 
   function nextSeat() {
     while (true) {
-      const row = Math.floor(idx / 50); // 50 seats per letter row
+      const row = Math.floor(idx / 50);
       const col = (idx % 50) + 1;
       idx++;
       const seat = `${letters[row] || "Z"}-${String(col).padStart(2,"0")}`;
@@ -253,9 +268,7 @@ function autoSeatFill() {
   }
 
   DB.students.forEach(s => {
-    if (!s.seat || !s.seat.trim()) {
-      s.seat = nextSeat();
-    }
+    if (!s.seat || !s.seat.trim()) s.seat = nextSeat();
   });
 
   saveDB();
@@ -268,11 +281,16 @@ function subjectsUI() {
   content.innerHTML = `
     <h3>Subjects</h3>
     <table class="table">
-      <tr><th>Code</th><th>Day</th><th>Time</th></tr>
+      <tr><th>Code</th><th>Day</th><th>Time</th><th>Grace (min)</th></tr>
       <tr>
-        <td><input id="scode"></td>
-        <td><input id="sday"></td>
+        <td><input id="scode" placeholder="MATH101"></td>
+        <td>
+          <select id="sday">
+            ${["MON","TUE","WED","THU","FRI","SAT","SUN"].map(d => `<option value="${d}">${d}</option>`).join("")}
+          </select>
+        </td>
         <td><input id="stime" type="time"></td>
+        <td><input id="sgrace" type="number" min="0" value="5" style="width:90px"></td>
         <td><button onclick="addSubject()">Add</button></td>
       </tr>
       ${DB.subjects.map(s => `
@@ -280,14 +298,27 @@ function subjectsUI() {
           <td>${s.code}</td>
           <td>${s.day}</td>
           <td>${s.time}</td>
+          <td>${s.grace ?? 5}</td>
         </tr>
       `).join("")}
     </table>
+    <p style="opacity:.7;font-size:12px">
+      Attendance status uses: <b>PRESENT</b> if scan time <= subject time + grace minutes; else <b>LATE</b>.
+    </p>
   `;
 }
 
 function addSubject() {
-  DB.subjects.push({ code: scode.value, day: sday.value, time: stime.value });
+  const code = (scode.value || "").trim();
+  const day = (sday.value || "").trim().toUpperCase();
+  const time = (stime.value || "").trim(); // "HH:MM"
+  const grace = Number(document.getElementById("sgrace").value || 5);
+
+  if (!code) return alert("Subject code required");
+  if (!time) return alert("Time required");
+  if (!day) return alert("Day required");
+
+  DB.subjects.push({ code, day, time, grace });
   saveDB(); subjectsUI();
 }
 
@@ -324,14 +355,27 @@ function addProf() {
 
 /* ---------------- PROFESSOR PANEL ---------------- */
 function professorUI() {
+  const day = todayShort();
+  const todaysSubjects = DB.subjects.filter(s => (s.day || "").toUpperCase() === day);
+
   app.innerHTML = `
     <div class="card">
       <h2>Professor Panel</h2>
-      <input id="scan" placeholder="Scan RFID / Student No">
-      <table class="table">
-        <tr><th>Student Name</th><th>Seat</th><th>Time</th><th>Status</th></tr>
+
+      <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+        <input id="scan" placeholder="Scan RFID / Student No" style="flex:1">
+        <select id="psub" style="min-width:200px">
+          ${todaysSubjects.length ? todaysSubjects.map(s => `
+            <option value="${s.code}">${s.code} (${s.time})</option>
+          `).join("") : `<option value="">No subject today (${day})</option>`}
+        </select>
+      </div>
+
+      <table class="table" style="margin-top:10px">
+        <tr><th>Student Name</th><th>Seat</th><th>Time</th><th>Subject</th><th>Status</th></tr>
         <tbody id="log"></tbody>
       </table>
+
       <button onclick="changePasswordUI()">Change Password</button>
       <button onclick="logout()">Logout</button>
     </div>
@@ -350,13 +394,32 @@ function takeAttendance(no) {
   }
 
   const now = new Date();
-  const status = now.getMinutes() === 0 ? "PRESENT" : "LATE";
+  const timeHM = nowHM(); // HH:MM
+
+  const day = todayShort();
+  const subCode = (document.getElementById("psub")?.value || "").trim();
+  const subject = DB.subjects.find(s => s.code === subCode && (s.day || "").toUpperCase() === day);
+
+  // If no subject matches today, default present (or you can force error)
+  if (!subject) {
+    alert(`No valid subject selected for today (${day}). Please add subject with correct Day.`);
+    return;
+  }
+
+  // PRESENT if scan <= subject.time + grace
+  const grace = Number(subject.grace ?? 5);
+  const allowedUntil = hmToMin(subject.time) + grace;
+  const scanMin = hmToMin(timeHM);
+
+  const status = scanMin <= allowedUntil ? "PRESENT" : "LATE";
 
   DB.attendance.push({
     no: student.no,
     name: student.name,
     seat: student.seat || "",
     time: now.toLocaleTimeString(),
+    subject: subject.code,
+    day: day,
     status
   });
 
@@ -367,9 +430,12 @@ function takeAttendance(no) {
       <td>${student.name}</td>
       <td>${student.seat || ""}</td>
       <td>${now.toLocaleTimeString()}</td>
+      <td>${subject.code}</td>
       <td>${status}</td>
     </tr>
   `;
+
+  scan.value = "";
 }
 
 /* ---------------- STUDENT PANEL ---------------- */
@@ -386,9 +452,11 @@ function studentUI(s) {
 
       <h4>Attendance</h4>
       <table class="table">
-        <tr><th>Time</th><th>Status</th></tr>
+        <tr><th>Day</th><th>Subject</th><th>Time</th><th>Status</th></tr>
         ${my.map(a => `
           <tr>
+            <td>${a.day || ""}</td>
+            <td>${a.subject || ""}</td>
             <td>${a.time}</td>
             <td>${a.status}</td>
           </tr>
