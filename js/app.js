@@ -1,299 +1,370 @@
 /* ==================================================
    RFID ATTENDANCE SYSTEM
-   STABLE BASELINE + NAME DISPLAY + SEAT ARRANGEMENT
-   + FIXED DAY/TIME LOGIC (PRESENT/LATE)
-   + SUBJECT PICKER (Professor)
-   + GRACE PERIOD (minutes)
-   + LIVE DATE/TIME HEADER
-   + EXPORT EXCEL / CSV / PDF
-   FULL WORKING VERSION
+   FULL FINAL VERSION
+   WITH:
+   ✓ LIVE CLOCK
+   ✓ PROFESSOR EXPORT BUTTONS
+   ✓ AUTO RFID SCAN
+   ✓ AUTO CLEAR INPUT
+   ✓ AUTO LOG DISPLAY
+   ✓ EXCEL / CSV / PDF EXPORT
    ================================================== */
 
 const app = document.getElementById("app");
 
-/* ---------------- LOAD EXPORT LIBRARIES ---------------- */
+/* ---------------- LOAD LIBRARIES ---------------- */
 
-const scriptXLSX = document.createElement("script");
-scriptXLSX.src = "https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
-document.head.appendChild(scriptXLSX);
+const xlsxScript = document.createElement("script");
+xlsxScript.src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js";
+document.head.appendChild(xlsxScript);
 
-const scriptPDF = document.createElement("script");
-scriptPDF.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
-document.head.appendChild(scriptPDF);
+const pdfScript=document.createElement("script");
+pdfScript.src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+document.head.appendChild(pdfScript);
 
 /* ---------------- DATABASE ---------------- */
 
-const DB = {
-  users: JSON.parse(localStorage.getItem("users")) || [
-    { u: "admin", p: "123", role: "admin" }
-  ],
-  students: JSON.parse(localStorage.getItem("students")) || [],
-  professors: JSON.parse(localStorage.getItem("professors")) || [],
-  subjects: JSON.parse(localStorage.getItem("subjects")) || [],
-  attendance: JSON.parse(localStorage.getItem("attendance")) || []
+const DB={
+users:JSON.parse(localStorage.getItem("users"))||[{u:"admin",p:"123",role:"admin"}],
+students:JSON.parse(localStorage.getItem("students"))||[],
+professors:JSON.parse(localStorage.getItem("professors"))||[],
+subjects:JSON.parse(localStorage.getItem("subjects"))||[],
+attendance:JSON.parse(localStorage.getItem("attendance"))||[]
 };
 
-function saveDB() {
-  Object.keys(DB).forEach(k =>
-    localStorage.setItem(k, JSON.stringify(DB[k]))
-  );
+function saveDB(){
+Object.keys(DB).forEach(k=>localStorage.setItem(k,JSON.stringify(DB[k])));
 }
 
-/* ---------------- MIGRATION ---------------- */
+/* ---------------- CLOCK HEADER ---------------- */
 
-DB.students = DB.students.map(s => ({
-  ...s,
-  seat: s.seat || ""
-}));
+function headerClock(){
+return `
+<div style="background:black;color:#00ff00;padding:10px;
+display:flex;justify-content:space-between;font-weight:bold">
 
-DB.subjects = DB.subjects.map(sub => ({
-  ...sub,
-  grace: (sub.grace === undefined || sub.grace === null) ? 5 : Number(sub.grace)
-}));
+<div>RFID ATTENDANCE SYSTEM</div>
+<div id="clock"></div>
 
-saveDB();
-
-let currentUser = null;
-
-/* ---------------- HEADER CLOCK ---------------- */
-
-function headerClock() {
-  return `
-    <div style="
-      background:#000;
-      color:#00ff00;
-      padding:10px;
-      display:flex;
-      justify-content:space-between;
-      font-weight:bold;
-      font-size:16px;
-    ">
-      <div>RFID ATTENDANCE SYSTEM</div>
-      <div id="liveClock"></div>
-    </div>
-  `;
+</div>
+`;
 }
 
-function startClock() {
+function startClock(){
 
-  function updateClock() {
+function update(){
 
-    const now = new Date();
+const now=new Date();
 
-    const date = now.toLocaleDateString();
-    const time = now.toLocaleTimeString();
+clock.innerHTML=
+now.toLocaleDateString()+" "+
+now.toLocaleTimeString();
 
-    const el = document.getElementById("liveClock");
+}
 
-    if (el) el.innerHTML = `${date} ${time}`;
-  }
-
-  updateClock();
-
-  setInterval(updateClock, 1000);
+update();
+setInterval(update,1000);
 
 }
 
 /* ---------------- TIME HELPERS ---------------- */
 
-function pad2(n) { return String(n).padStart(2, "0"); }
+function pad2(n){return String(n).padStart(2,"0");}
 
-function hmToMin(hm) {
-  if (!hm) return 0;
-  const [h, m] = hm.split(":").map(Number);
-  return (h * 60) + m;
-}
+function hmToMin(hm){
 
-function nowHM() {
-  const d = new Date();
-  return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-}
-
-function todayShort() {
-  const d = new Date();
-  return ["SUN","MON","TUE","WED","THU","FRI","SAT"][d.getDay()];
-}
-
-/* ---------------- EXPORT FUNCTIONS ---------------- */
-
-function getAttendanceData() {
-
-  return DB.attendance.map(a => ({
-    StudentNo: a.no,
-    Name: a.name,
-    Seat: a.seat,
-    Subject: a.subject,
-    Day: a.day,
-    Time: a.time,
-    Status: a.status
-  }));
+const[h,m]=hm.split(":").map(Number);
+return h*60+m;
 
 }
 
-/* CSV */
-function exportCSV() {
+function nowHM(){
 
-  const rows = getAttendanceData();
-
-  if (!rows.length) return alert("No data");
-
-  const header = Object.keys(rows[0]).join(",");
-  const body = rows.map(r => Object.values(r).join(",")).join("\n");
-
-  const blob = new Blob([header+"\n"+body], {type:"text/csv"});
-
-  const link = document.createElement("a");
-
-  link.href = URL.createObjectURL(blob);
-  link.download = "attendance.csv";
-  link.click();
+const d=new Date();
+return pad2(d.getHours())+":"+pad2(d.getMinutes());
 
 }
 
-/* EXCEL */
-function exportExcel() {
+function todayShort(){
 
-  if (!window.XLSX) {
-    alert("Excel library loading...");
-    return;
-  }
-
-  const ws = XLSX.utils.json_to_sheet(getAttendanceData());
-  const wb = XLSX.utils.book_new();
-
-  XLSX.utils.book_append_sheet(wb, ws, "Attendance");
-
-  XLSX.writeFile(wb, "attendance.xlsx");
+return ["SUN","MON","TUE","WED","THU","FRI","SAT"][new Date().getDay()];
 
 }
 
-/* PDF */
-function exportPDF() {
+/* ---------------- EXPORT ---------------- */
 
-  if (!window.jspdf) {
-    alert("PDF library loading...");
-    return;
-  }
+function exportData(){
 
-  const { jsPDF } = window.jspdf;
+return DB.attendance.map(a=>({
+StudentNo:a.no,
+Name:a.name,
+Seat:a.seat,
+Subject:a.subject,
+Day:a.day,
+Time:a.time,
+Status:a.status
+}));
 
-  const doc = new jsPDF();
+}
 
-  const rows = getAttendanceData();
+function exportCSV(){
 
-  let y = 10;
+const data=exportData();
 
-  doc.text("Attendance Report",10,y);
+if(!data.length)return alert("No data");
 
-  y+=10;
+const header=Object.keys(data[0]).join(",");
+const body=data.map(r=>Object.values(r).join(",")).join("\n");
 
-  rows.forEach(r=>{
-    doc.text(
-      `${r.StudentNo} ${r.Name} ${r.Subject} ${r.Status}`,
-      10,y
-    );
-    y+=7;
-  });
+const blob=new Blob([header+"\n"+body],{type:"text/csv"});
 
-  doc.save("attendance.pdf");
+const link=document.createElement("a");
+
+link.href=URL.createObjectURL(blob);
+link.download="attendance.csv";
+link.click();
+
+}
+
+function exportExcel(){
+
+if(!window.XLSX)return alert("Loading Excel...");
+
+const ws=XLSX.utils.json_to_sheet(exportData());
+const wb=XLSX.utils.book_new();
+
+XLSX.utils.book_append_sheet(wb,ws,"Attendance");
+
+XLSX.writeFile(wb,"attendance.xlsx");
+
+}
+
+function exportPDF(){
+
+if(!window.jspdf)return alert("Loading PDF...");
+
+const{jsPDF}=window.jspdf;
+
+const doc=new jsPDF();
+
+let y=10;
+
+doc.text("Attendance Report",10,y);
+
+y+=10;
+
+exportData().forEach(r=>{
+doc.text(`${r.StudentNo} ${r.Name} ${r.Subject} ${r.Status}`,10,y);
+y+=7;
+});
+
+doc.save("attendance.pdf");
 
 }
 
 /* ---------------- LOGIN ---------------- */
 
-function loginUI() {
+function loginUI(){
 
-  app.innerHTML = headerClock() + `
-  <div class="card" style="max-width:400px;margin:auto">
+app.innerHTML=headerClock()+`
 
-    <h2>Login</h2>
+<div class="card">
 
-    <input id="lu" placeholder="Username">
+<h2>Login</h2>
 
-    <input id="lp" type="password" placeholder="Password">
+<input id="lu" placeholder="Username">
 
-    <button onclick="login()">Login</button>
+<input id="lp" type="password" placeholder="Password">
 
-    <p>admin / 123</p>
+<button onclick="login()">Login</button>
 
-  </div>
-  `;
+<p>admin / 123</p>
 
-  startClock();
+</div>
+`;
+
+startClock();
+
 }
 
-function login() {
+function login(){
 
-  const u = lu.value.trim();
-  const p = lp.value.trim();
+const u=lu.value.trim();
+const p=lp.value.trim();
 
-  const admin = DB.users.find(x=>x.u===u && x.p===p);
+const admin=DB.users.find(x=>x.u===u&&x.p===p);
 
-  if(admin){
+if(admin){currentUser=admin;registrarUI();return;}
 
-    currentUser=admin;
-    registrarUI();
-    return;
-  }
+const prof=DB.professors.find(x=>x.u===u&&x.p===p);
 
-  const prof = DB.professors.find(x=>x.u===u && x.p===p);
+if(prof){currentUser=prof;professorUI();return;}
 
-  if(prof){
+const student=DB.students.find(x=>x.no===u);
 
-    currentUser=prof;
-    professorUI();
-    return;
-  }
+if(student){currentUser=student;studentUI(student);return;}
 
-  const student = DB.students.find(x=>x.no===u);
-
-  if(student){
-
-    currentUser=student;
-    studentUI(student);
-    return;
-  }
-
-  alert("Invalid login");
+alert("Invalid");
 
 }
 
 /* ---------------- REGISTRAR ---------------- */
 
-function registrarUI(tab="students") {
+function registrarUI(tab="students"){
 
-  app.innerHTML = headerClock() + `
-  <div class="card">
+app.innerHTML=headerClock()+`
 
-    <h2>Registrar Panel</h2>
+<div class="card">
 
-    <button onclick="registrarUI('students')">Students</button>
+<h2>Registrar Panel</h2>
 
-    <button onclick="registrarUI('subjects')">Subjects</button>
+<button onclick="registrarUI('students')">Students</button>
+<button onclick="registrarUI('subjects')">Subjects</button>
+<button onclick="registrarUI('professors')">Professors</button>
 
-    <button onclick="registrarUI('professors')">Professors</button>
+<button onclick="exportExcel()">Export Excel</button>
+<button onclick="exportCSV()">Export CSV</button>
+<button onclick="exportPDF()">Export PDF</button>
 
-    <button onclick="registrarUI('seats')">Seats</button>
+<button onclick="logout()">Logout</button>
 
-    <button onclick="exportExcel()">Export Excel</button>
+<div id="content"></div>
 
-    <button onclick="exportCSV()">Export CSV</button>
+</div>
+`;
 
-    <button onclick="exportPDF()">Export PDF</button>
+startClock();
 
-    <button onclick="logout()">Logout</button>
+if(tab==="students")studentsUI();
+if(tab==="subjects")subjectsUI();
+if(tab==="professors")professorsUI();
 
-    <div id="content"></div>
+}
 
-  </div>
-  `;
+/* ---------------- PROFESSOR PANEL ---------------- */
 
-  startClock();
+function professorUI(){
 
-  if(tab==="students") studentsUI();
-  if(tab==="subjects") subjectsUI();
-  if(tab==="professors") professorsUI();
-  if(tab==="seats") seatsUI();
+const day=todayShort();
+
+const todaySubjects=DB.subjects.filter(s=>s.day===day);
+
+app.innerHTML=headerClock()+`
+
+<div class="card">
+
+<h2>Professor Panel</h2>
+
+<div style="display:flex;gap:10px">
+
+<input id="scan" placeholder="Scan RFID">
+
+<select id="psub">
+${todaySubjects.map(s=>`<option value="${s.code}">${s.code} (${s.time})</option>`).join("")}
+</select>
+
+</div>
+
+<div style="margin-top:10px">
+
+<button onclick="exportExcel()">Export Excel</button>
+<button onclick="exportCSV()">Export CSV</button>
+<button onclick="exportPDF()">Export PDF</button>
+
+<button onclick="logout()">Logout</button>
+
+</div>
+
+<table class="table">
+
+<thead>
+
+<tr>
+<th>Name</th>
+<th>Seat</th>
+<th>Time</th>
+<th>Subject</th>
+<th>Status</th>
+</tr>
+
+</thead>
+
+<tbody id="log"></tbody>
+
+</table>
+
+</div>
+`;
+
+startClock();
+
+scan.focus();
+
+scan.addEventListener("keydown",function(e){
+
+if(e.key==="Enter"){
+
+takeAttendance(scan.value.trim());
+
+scan.value="";
+scan.focus();
+
+}
+
+});
+
+}
+
+/* ---------------- ATTENDANCE ---------------- */
+
+function takeAttendance(no){
+
+const student=DB.students.find(s=>s.no===no);
+
+if(!student){alert("Student not found");return;}
+
+const subjectCode=psub.value;
+
+const subject=DB.subjects.find(s=>s.code===subjectCode);
+
+const now=new Date();
+
+const scanMin=hmToMin(nowHM());
+
+const allowed=hmToMin(subject.time)+subject.grace;
+
+const status=scanMin<=allowed?"PRESENT":"LATE";
+
+const record={
+no:student.no,
+name:student.name,
+seat:student.seat,
+time:now.toLocaleTimeString(),
+subject:subject.code,
+day:todayShort(),
+status
+};
+
+DB.attendance.push(record);
+
+saveDB();
+
+/* display immediately */
+
+log.innerHTML=`
+
+<tr>
+
+<td>${record.name}</td>
+<td>${record.seat}</td>
+<td>${record.time}</td>
+<td>${record.subject}</td>
+<td>${record.status}</td>
+
+</tr>
+
+`+log.innerHTML;
+
 }
 
 /* ---------------- STUDENTS ---------------- */
@@ -301,6 +372,7 @@ function registrarUI(tab="students") {
 function studentsUI(){
 
 content.innerHTML=`
+
 <h3>Students</h3>
 
 <input id="sno" placeholder="Student No">
@@ -316,8 +388,7 @@ ${DB.students.map(s=>`
 <td>${s.no}</td>
 <td>${s.name}</td>
 <td>${s.seat}</td>
-</tr>
-`).join("")}
+</tr>`).join("")}
 
 </table>
 `;
@@ -326,14 +397,14 @@ ${DB.students.map(s=>`
 
 function addStudent(){
 
-const no=sno.value.trim();
-const name=sname.value.trim();
-const seat=sseat.value.trim();
-
-DB.students.push({no,name,seat,subjects:[]});
+DB.students.push({
+no:sno.value,
+name:sname.value,
+seat:sseat.value,
+subjects:[]
+});
 
 saveDB();
-
 studentsUI();
 
 }
@@ -343,6 +414,7 @@ studentsUI();
 function subjectsUI(){
 
 content.innerHTML=`
+
 <h3>Subjects</h3>
 
 <input id="scode" placeholder="Code">
@@ -360,8 +432,7 @@ ${DB.subjects.map(s=>`
 <td>${s.day}</td>
 <td>${s.time}</td>
 <td>${s.grace}</td>
-</tr>
-`).join("")}
+</tr>`).join("")}
 
 </table>
 `;
@@ -371,16 +442,13 @@ ${DB.subjects.map(s=>`
 function addSubject(){
 
 DB.subjects.push({
-
 code:scode.value,
 day:sday.value,
 time:stime.value,
 grace:Number(sgrace.value)
-
 });
 
 saveDB();
-
 subjectsUI();
 
 }
@@ -390,6 +458,7 @@ subjectsUI();
 function professorsUI(){
 
 content.innerHTML=`
+
 <h3>Professors</h3>
 
 <input id="pu">
@@ -400,10 +469,7 @@ content.innerHTML=`
 <table>
 
 ${DB.professors.map(p=>`
-<tr>
-<td>${p.u}</td>
-</tr>
-`).join("")}
+<tr><td>${p.u}</td></tr>`).join("")}
 
 </table>
 `;
@@ -412,92 +478,10 @@ ${DB.professors.map(p=>`
 
 function addProf(){
 
-DB.professors.push({
-
-u:pu.value,
-p:pp.value
-
-});
+DB.professors.push({u:pu.value,p:pp.value});
 
 saveDB();
-
 professorsUI();
-
-}
-
-/* ---------------- SEATS ---------------- */
-
-function seatsUI(){
-
-content.innerHTML=`
-<h3>Seat Arrangement</h3>
-
-<table>
-
-${DB.students.map(s=>`
-<tr>
-<td>${s.no}</td>
-<td>${s.name}</td>
-<td>${s.seat}</td>
-</tr>
-`).join("")}
-
-</table>
-`;
-
-}
-
-/* ---------------- PROFESSOR PANEL ---------------- */
-
-function professorUI(){
-
-app.innerHTML=headerClock()+`
-<div class="card">
-
-<h2>Professor Panel</h2>
-
-<input id="scan">
-
-<table id="log"></table>
-
-<button onclick="logout()">Logout</button>
-
-</div>
-`;
-
-startClock();
-
-scan.addEventListener("keydown",e=>{
-
-if(e.key==="Enter") takeAttendance(scan.value);
-
-});
-
-}
-
-function takeAttendance(no){
-
-const s=DB.students.find(x=>x.no===no);
-
-if(!s){alert("Not found");return;}
-
-const subject=DB.subjects[0];
-
-const now=new Date();
-
-DB.attendance.push({
-
-no:s.no,
-name:s.name,
-seat:s.seat,
-time:now.toLocaleTimeString(),
-subject:subject?.code||"",
-day:todayShort(),
-status:"PRESENT"
-
-});
-
-saveDB();
 
 }
 
@@ -506,6 +490,7 @@ saveDB();
 function studentUI(s){
 
 app.innerHTML=headerClock()+`
+
 <div class="card">
 
 <h2>${s.name}</h2>
@@ -524,8 +509,6 @@ startClock();
 /* ---------------- LOGOUT ---------------- */
 
 function logout(){
-
-currentUser=null;
 
 loginUI();
 
